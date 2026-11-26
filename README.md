@@ -64,7 +64,7 @@ No servers, no accounts, no analytics. See [PRIVACY.md](PRIVACY.md).
 
 ## Support
 
-Questions, bugs or ideas: open an issue, or mail glucosetrace@protonmail.com.
+Questions, bugs or ideas: open an issue, or mail glucosetrace@pm.me.
 
 ## Licence
 

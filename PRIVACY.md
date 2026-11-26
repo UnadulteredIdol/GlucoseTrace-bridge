@@ -57,4 +57,4 @@ This app is not a medical device. Do not use it for treatment decisions.
 
 ## Contact
 
-glucosetrace@protonmail.com
+glucosetrace@pm.me

@@ -96,6 +96,7 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
     @Published var iobUnits: Double?             // as Nightscout shows it (AID app or logged boluses); nil if unknown
     @Published var cobGrams: Double?             // likewise (logged carbs)
     @Published var lastLoopDate: Date?
+    private var lastPumpStatusAt: Date?          // last devicestatus request that answered (see runFetch)
     @Published var statusMessage: String = "Not started"
     @Published var isAdvertising: Bool  = false
     @Published var bleConnected: Bool   = false {
@@ -243,6 +244,7 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
         cloudClient = nil; cloudBlocked = false; recentReadings = []; lastCloudReadings = []; staleWarning = nil // fresh login after a settings fix
         sentStatus = .ok; fetchFailure = .ok
         if dataSource != .nightscout { iobUnits = nil; cobGrams = nil; lastLoopDate = nil }
+        lastPumpStatusAt = nil
         bridgeActive = true
         UserDefaults.standard.set(true, forKey: Self.runningKey)
         unitsFetched = false // pick up a units change on the site
@@ -326,6 +328,11 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
         if lastFetchFailed && cloudBlocked {
             content.title = "\(source) refused the login"
             content.body = "The watch keeps the last reading as it ages. Check the login in the bridge app, then press Stop and Start."
+        } else if lastFetchFailed && fetchFailure == .loginFailed {
+            // Nightscout said 401/403: the token, not the connection. The
+            // bridge keeps asking, so a role fixed on the site works at once.
+            content.title = "\(source) refused the token"
+            content.body = "The watch keeps the last reading as it ages. Check that the token in the bridge app has the readable role on your Nightscout site."
         } else if lastFetchFailed {
             content.title = "Can't reach \(source)"
             content.body = dataSource == .nightscout
@@ -440,7 +447,18 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
     // counts its blocks back from it).
     private func seal(_ message: (UInt32) -> [UInt8]) -> Data {
         let now = UInt32(Date().timeIntervalSince1970)
-        lastNonce = lastNonce > now &+ 60 ? now : max(now, lastNonce &+ 1) // a saved nonce far ahead (clock set back) would be rejected by the watch
+        // A saved nonce ahead of the clock (the clock was set back) keeps
+        // counting up, so no nonce repeats, while the watch still accepts it:
+        // up to 10 min ahead of its clock, of which 8 are used here to leave
+        // room for a watch clock that is a little behind. Further ahead the
+        // watch would reject every packet, so it restarts at the clock, which
+        // can repeat nonces from that window (PROTOCOL.md 4.5).
+        if lastNonce > now &+ 480 {
+            log("BLE", "Clock set back by more than 8 min: nonce restarts at the clock")
+            lastNonce = now
+        } else {
+            lastNonce = max(now, lastNonce &+ 1)
+        }
         guard let bridgeKey else { return Data() } // not reached: Start needs the key; the watch drops an empty packet
         return PacketSealer.seal(message(lastNonce), nonce: lastNonce, key: bridgeKey)
     }
@@ -573,7 +591,8 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
     /// devicestatus. All nil when there is none (MDI, or the AID app isn't
     /// uploading). IOB or COB older than 30 min counts as unknown. The loop
     /// time is the last change the pump confirmed (see fetchLastEnacted).
-    private func fetchPumpStatus(base: String, token: String) async -> (iob: Double?, cob: Double?, loop: Date?) {
+    /// Nil when the request itself failed: that says nothing about the pump.
+    private func fetchPumpStatus(base: String, token: String) async -> (iob: Double?, cob: Double?, loop: Date?)? {
         var components = URLComponents(string: base + "/api/v1/devicestatus.json")
         components?.queryItems = [URLQueryItem(name: "find[openaps][$exists]", value: "true"),
                                   URLQueryItem(name: "count", value: "1"),
@@ -581,8 +600,8 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
         guard let url = components?.url,
               let result = try? await urlSession.data(from: url),
               (result.1 as? HTTPURLResponse)?.statusCode == 200,
-              let list = try? JSONSerialization.jsonObject(with: result.0) as? [[String: Any]],
-              let openaps = list.first?["openaps"] as? [String: Any] else { return (nil, nil, nil) }
+              let list = try? JSONSerialization.jsonObject(with: result.0) as? [[String: Any]] else { return nil }
+        guard let openaps = list.first?["openaps"] as? [String: Any] else { return (nil, nil, nil) }
 
         // COB from the newer of the loop's suggestion and enactment.
         let latest = [openaps["suggested"], openaps["enacted"]]
@@ -621,20 +640,49 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
     /// uploading (Trio's Nightscout access removed, 2026-10-30, left the
     /// watch on a red "Loop 126m" for days).
     private func fetchLastEnacted(base: String, token: String) async -> Date? {
+        func recent(_ date: Date?) -> Date? { date.flatMap { Date().timeIntervalSince($0) < 6 * 3600 ? $0 : nil } }
+        switch await lookupEnactments(base: base, token: token, count: 3) {
+        case .confirmed(let date): return recent(date)
+        case .noEnactments: return nil            // open loop, or no AID app
+        case .failed: return recent(lastLoopDate) // no answer: keep counting from the last known time
+        case .allRefused:
+            // The pump refused the last three (out of reach for ~15 min). The
+            // age must keep growing to red, not vanish: keep the last
+            // confirmed time. On a fresh start, look further back once.
+            if let last = recent(lastLoopDate) { return last }
+            switch await lookupEnactments(base: base, token: token, count: 36) {
+            case .confirmed(let date): return recent(date)
+            case .allRefused(let oldest, let full):
+                return full ? recent(oldest) : nil // nothing confirmed in ~3 h: at least that old
+            default: return nil
+            }
+        }
+    }
+
+    private enum EnactmentLookup {
+        case failed, noEnactments
+        case confirmed(Date)
+        case allRefused(oldest: Date?, full: Bool) // full: the request returned all it asked for
+    }
+    /// The newest confirmed enactment among the newest `count` devicestatus
+    /// entries that have one.
+    private func lookupEnactments(base: String, token: String, count: Int) async -> EnactmentLookup {
         var components = URLComponents(string: base + "/api/v1/devicestatus.json")
         components?.queryItems = [URLQueryItem(name: "find[openaps.enacted][$exists]", value: "true"),
-                                  URLQueryItem(name: "count", value: "3"),
+                                  URLQueryItem(name: "count", value: String(count)),
                                   URLQueryItem(name: "token", value: token)]
         guard let url = components?.url,
               let result = try? await urlSession.data(from: url),
               (result.1 as? HTTPURLResponse)?.statusCode == 200,
-              let list = try? JSONSerialization.jsonObject(with: result.0) as? [[String: Any]] else { return nil }
-        return list
-            .compactMap { ($0["openaps"] as? [String: Any])?["enacted"] as? [String: Any] }
-            .filter { ($0["received"] ?? $0["recieved"]) as? Bool != false }
-            .compactMap { Self.isoDate($0["timestamp"]) }
-            .max()
-            .flatMap { Date().timeIntervalSince($0) < 6 * 3600 ? $0 : nil }
+              let list = try? JSONSerialization.jsonObject(with: result.0) as? [[String: Any]] else { return .failed }
+        let enacted = list.compactMap { ($0["openaps"] as? [String: Any])?["enacted"] as? [String: Any] }
+        if enacted.isEmpty { return .noEnactments }
+        if let date = enacted
+            .filter({ ($0["received"] ?? $0["recieved"]) as? Bool != false })
+            .compactMap({ Self.isoDate($0["timestamp"]) })
+            .max() { return .confirmed(date) }
+        return .allRefused(oldest: enacted.compactMap { Self.isoDate($0["timestamp"]) }.min(),
+                           full: list.count >= count)
     }
 
     // Glucose values only go to the console in debug builds.
@@ -795,14 +843,19 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
             // IOB and COB as Nightscout shows them (AID app or logged
             // treatments); the AID app's own upload if Nightscout gives none.
             // The loop time comes from the AID app only.
-            let pump = await fetchPumpStatus(base: base, token: token)
-            // Out of time during these requests: they came back nil, which
-            // would read as "unknown". The glucose is good, so keep the old
-            // IOB, COB and loop time for this round.
-            let timedOut = Task.isCancelled
-            let iob  = timedOut ? iobUnits : (props.iob ?? pump.iob)
-            let cob  = timedOut ? cobGrams : (props.cob ?? pump.cob)
-            let loop = timedOut ? lastLoopDate : pump.loop
+            let pump = await fetchPumpStatus(base: base, token: token) // nil: the request failed
+            // Out of time, or the devicestatus request failed: that says
+            // nothing about the pump, and "unknown" would blank the line. The
+            // glucose is good, so keep the old IOB and COB for up to 30 min
+            // after the last answer (the same limit as for an IOB value), and
+            // the loop time while it is under 6 h old: it keeps ageing on the
+            // watch, which is true.
+            let pumpFailed = Task.isCancelled || pump == nil
+            if !pumpFailed { lastPumpStatusAt = Date() }
+            let keepIobCob = pumpFailed && (lastPumpStatusAt.map { Date().timeIntervalSince($0) < 30 * 60 } ?? false)
+            let iob  = props.iob ?? (pumpFailed ? (keepIobCob ? iobUnits : nil) : pump?.iob)
+            let cob  = props.cob ?? (pumpFailed ? (keepIobCob ? cobGrams : nil) : pump?.cob)
+            let loop = pumpFailed ? lastLoopDate.flatMap { Date().timeIntervalSince($0) < 6 * 3600 ? $0 : nil } : pump?.loop
             let pumpChanged = iob != iobUnits || cob != cobGrams || loop != lastLoopDate
             iobUnits     = iob
             cobGrams     = cob

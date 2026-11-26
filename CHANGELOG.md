@@ -2,6 +2,14 @@
 
 iPhone bridge for [Glucose Trace](https://github.com/UnadulteredIdol/GlucoseTrace). Version numbers match the watch app they go with.
 
+## Unreleased
+
+- Loop age: when the pump refused the last three loop changes (out of reach for about 15 minutes), the loop age now keeps growing to red instead of disappearing.
+- A failed Nightscout status request no longer blanks IOB, COB and the loop age: IOB and COB stay for up to 30 minutes, the loop age keeps ageing.
+- A rejected Nightscout token now gets its own notification instead of "Can't reach Nightscout". The bridge keeps asking, so fixing the token's role on the site is enough.
+- Nonces stay unique after the phone's clock is set back by up to 8 minutes (PROTOCOL.md 4.5).
+- The app target now really requires iOS 17 or later, as the README says.
+
 ## 1.0 (2026-11-26)
 
 First public release, and the first build for TestFlight testers. Developed privately since October 2026.
