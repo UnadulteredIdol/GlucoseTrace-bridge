@@ -23,7 +23,7 @@ Passwords and the Nightscout token are stored in the iOS Keychain, on device onl
 
 ## Install
 
-Invited testers get the bridge through TestFlight. Everyone else builds it with Xcode:
+Invited testers get the bridge through TestFlight. Everyone else builds it with Xcode (the [install guide](https://github.com/UnadulteredIdol/GlucoseTrace/blob/main/INSTALL.md) covers the bridge and the watch app together):
 
 1. You need a Mac with Xcode 26.4 or later and an iPhone with **iOS 17** or later (tested on iOS 26). The app is iPhone only.
 2. Clone this repo and open `Glucose Trace.xcodeproj`.
@@ -39,8 +39,8 @@ With a free Apple account the app stops opening after 7 days; build it again the
 ## Use
 
 1. Choose your data source and enter its login.
-2. For a watch app you sideloaded yourself, put the **watch key** in `settings.bridgeKey` in `watch/data.json` and deploy again instead: a full sync from the Suunto app removes sideloaded apps.
-  2.2. Later: Copy the **watch key** (Copy keeps it on this phone and clears it after 2 minutes) into Glucose Trace's **Bridge key** setting in the Suunto app, then sync the watch. 
+2. Copy the **watch key** (Copy keeps it on this phone and clears it after 2 minutes), put it in `settings.bridgeKey` in `watch/data.json`, and deploy the watch app again. A sideloaded app gets its settings only from `data.json`, and a full sync from the Suunto app removes it.
+   - Once Glucose Trace is in the SuuntoPlus store: paste the key into its **Bridge key** setting in the Suunto app instead, then sync the watch.
 3. Tap **Start bridge**. It fetches your latest reading and starts advertising.
 4. Start the workout with Glucose Trace on the watch. **Keep this app on screen until the watch shows a reading**; the screen stays on until then. After that the phone can lock.
 
