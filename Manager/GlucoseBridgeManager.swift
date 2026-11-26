@@ -44,7 +44,7 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
     @Published var glucoseMgdl: Int     = 0
     @Published var trend: UInt8         = 0
     @Published var rateMgdl: Double     = 0    // mg/dL per 5 min
-    // Display unit, from the Nightscout site's settings; the watch follows it.
+    // Display unit: the Nightscout site's setting, or the Units picker for the other sources; the watch follows it.
     @Published var unitsMgdl: Bool = UserDefaults.standard.bool(forKey: "unitsMgdl") {
         didSet { UserDefaults.standard.set(unitsMgdl, forKey: "unitsMgdl") }
     }
@@ -434,8 +434,8 @@ class GlucoseBridgeManager: NSObject, ObservableObject {
 
     // Nonce = unix seconds, bumped so it strictly increases even for two
     // packets in the same second (the watch rejects repeats as replays, and
-    // accepts nonces up to 10 min ahead of its clock, so a backfill burst of
-    // 36 packets is fine).
+    // accepts nonces up to 10 min ahead of its clock, so the paced 8-packet
+    // graph backfill is fine).
     // The message is built for the nonce it goes out with (a history packet
     // counts its blocks back from it).
     private func seal(_ message: (UInt32) -> [UInt8]) -> Data {
@@ -1044,7 +1044,7 @@ extension GlucoseBridgeManager: CBPeripheralManagerDelegate {
     func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
         drainBLE()
     }
-    // The watch's pause byte (PROTOCOL.md). Only a single byte 01 at offset 0 counts.
+    // The watch's pause byte (PROTOCOL.md). A write at offset 0 whose first byte is 01 counts.
     // One respond per call, to the first request.
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         guard let request = requests.first else { return }
@@ -1093,7 +1093,7 @@ enum BridgeFault: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var detail: String {
         switch self {
-        case .hang: return "Stays connected, sends nothing, reads fail (as seen on 30 Oct). Watch: \u{201C}No phone\u{201D} and a buzz at 2 min, then a new connection; data back after the end."
+        case .hang: return "Stays connected, sends nothing, reads fail (as seen on 30 Oct). Watch: \u{201C}No phone\u{201D} and a buzz at 2 min, then notifications re-enabled on the same connection; data back after the end."
         case .vanish: return "Removes the Bluetooth service but keeps advertising, like Stop then Start. Watch: reconnects after the end."
         case .hide: return "Removes the service and stops advertising, so the watch can't find the phone. Watch: \u{201C}No phone\u{201D} at 2 min, reconnects after the end. Keep the app open and the phone unlocked: nothing can wake the app during this test, so in the background it never ends (16 Nov)."
         case .slow: return "Answers reads 5 s late and sends no notifications. Watch: no \u{201C}No phone\u{201D}: reads still succeed (the watch gives up after ~10 s) and gaps stay under 2 min."

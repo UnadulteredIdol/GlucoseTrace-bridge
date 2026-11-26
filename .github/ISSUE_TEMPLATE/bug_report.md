@@ -25,4 +25,4 @@ labels: bug
 - CGM:
 
 **Logs (if you have them)**
-Bridge: the Xcode console lines starting with `[REST]`, `[BLE]` or `[EVENT]`. Watch: lines starting with `NSG` from the watch log.
+Bridge: TestFlight users, use *Send Beta Feedback* in TestFlight with a screenshot of the bridge app. If you build it yourself, the Xcode console lines starting with `[REST]`, `[BLE]` or `[EVENT]` (debug builds print all three). Watch: lines starting with `NSG` from the watch log.
