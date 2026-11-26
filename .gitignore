@@ -1,0 +1,5 @@
+# Per-user Xcode state
+xcuserdata/
+DerivedData/
+build/
+.DS_Store
