@@ -1,6 +1,6 @@
-# Glucose Trace Bridge (iPhone)
+# Glucose Trace Bridge (iOS)
 
-The iPhone app that sends your CGM glucose to the **[Glucose Trace](https://github.com/UnadulteredIdol/GlucoseTrace)** SuuntoPlus app on your Suunto watch. It fetches each new reading from your data source and passes it to the watch over Bluetooth, encrypted with a key only your watch has.
+An iPhone app that sends your CGM glucose to the **[Glucose Trace](https://github.com/UnadulteredIdol/GlucoseTrace)** SuuntoPlus app on your Suunto watch. It fetches each new reading from your data source and passes it to the watch over Bluetooth, encrypted with a key only your watch has.
 
 > [!IMPORTANT]
 > **Not a medical device.** Experimental software, not approved for treatment decisions. Never rely on it as your only source of glucose information: confirm with your CGM app or a meter. Readings can be delayed or missing. Use it at your own risk.
@@ -11,15 +11,15 @@ The iPhone app that sends your CGM glucose to the **[Glucose Trace](https://gith
 |---|---|---|
 | **Nightscout** | site URL and an access token with only the *readable* role (Admin Tools → Subjects), never your API_SECRET | glucose, trend, rate; IOB and COB from an AID app (Trio, Loop, AAPS); loop age from Trio and AAPS |
 | **LibreLinkUp** (FreeStyle Libre 2 and 3) | the email and password of a LibreLinkUp follower account that your Libre app shares with (your own works). Accept its terms once in the LibreLinkUp app | glucose and trend |
-| **Dexcom Share** (G6, G7, ONE+), *not offered in this version* | your own Dexcom login and region. If your email is refused, use your phone number with + and country code. In the Dexcom app, switch Share on and invite at least one follower | glucose and trend |
+| **Dexcom Share** (G6, G7, ONE+), *not offered yet* | your own Dexcom login and region. If your email is refused, use your phone number with + and country code. In the Dexcom app, switch Share on and invite at least one follower | glucose and trend |
 
-- **Dexcom Share is parked:** the code is still there, but the app doesn't offer it until a tester asks for it. To switch it on in your own build, add `.dexcomShare` to `DataSource.offered` in `Manager/GlucoseBridgeManager.swift`.
+- **Dexcom Share is parked:** the code is still there, but the app doesn't offer it until a tester can actually test it. To switch it on in your own build, add `.dexcomShare` to `DataSource.offered` in `Manager/GlucoseBridgeManager.swift`.
 - **LibreLinkUp and Dexcom Share** are unofficial connections that Abbott and Dexcom can change or block without notice.
-  - LibreLinkUp is asked at most once a minute, as xDrip4iOS does, also when the watch reconnects or you tap Refresh. Dexcom Share is asked only for what's new since the last reading.
-  - A refused login stops all retries until you press Stop and Start again (repeated failed logins can lock a Dexcom account). The watch shows *Login failed* at once.
+  - LibreLinkUp is asked at most once a minute, also when the watch reconnects or you tap Refresh. Dexcom Share is asked only for what's new since the last reading.
+  - A refused login stops all retries until you press Stop and Start again. The watch shows *Login failed* at once.
 - **CGM only logging** (Nightscout, on by default): ignores insulin and carbs logged by hand in Nightscout, so people who log nothing don't see "IOB 0.0U" on the watch. Turn it off if you log your injections in Nightscout. An AID app's IOB and COB, and the loop age from Trio or AAPS, are always shown.
 
-Passwords and the Nightscout token are stored in the iOS Keychain, on this device only.
+Passwords and the Nightscout token are stored in the iOS Keychain, on device only.
 
 ## Install
 
@@ -39,7 +39,8 @@ With a free Apple account the app stops opening after 7 days; build it again the
 ## Use
 
 1. Choose your data source and enter its login.
-2. Copy the **watch key** (Copy keeps it on this phone and clears it after 2 minutes) into Glucose Trace's **Bridge key** setting in the Suunto app, then sync the watch. For a watch app you sideloaded yourself, put it in `settings.bridgeKey` in `watch/data.json` and deploy again instead: a full sync from the Suunto app removes sideloaded apps.
+2. For a watch app you sideloaded yourself, put the **watch key** in `settings.bridgeKey` in `watch/data.json` and deploy again instead: a full sync from the Suunto app removes sideloaded apps.
+  2.2. Later: Copy the **watch key** (Copy keeps it on this phone and clears it after 2 minutes) into Glucose Trace's **Bridge key** setting in the Suunto app, then sync the watch. 
 3. Tap **Start bridge**. It fetches your latest reading and starts advertising.
 4. Start the workout with Glucose Trace on the watch. **Keep this app on screen until the watch shows a reading**; the screen stays on until then. After that the phone can lock.
 
@@ -60,7 +61,7 @@ Writing a bridge for another platform: follow PROTOCOL.md and check your packets
 
 ## Privacy
 
-No servers, no accounts, no analytics. See [PRIVACY.md](PRIVACY.md).
+See [PRIVACY.md](PRIVACY.md).
 
 ## Support
 
@@ -68,4 +69,4 @@ Questions, bugs or ideas: open an issue, or mail glucosetrace@pm.me.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). An independent project, not affiliated with or endorsed by Suunto, Abbott, Dexcom or the Nightscout project.
+MIT, see [LICENSE](LICENSE). An independent project, not affiliated with Suunto, Abbott, Dexcom or the Nightscout project.
