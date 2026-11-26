@@ -2,15 +2,44 @@
 import SwiftUI
 import UIKit
 
+// Developer options: a screen of its own behind one row at the bottom of the
+// settings, so the tests stay out of the way of the normal setup. Debug builds
+// only, so none of this reaches a release build.
+struct DeveloperOptionsLink: View {
+    @EnvironmentObject var bridge: GlucoseBridgeManager
+
+    var body: some View {
+        Section {
+            NavigationLink {
+                Form { FaultTestsSection() }
+                    .navigationTitle("Developer options")
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                HStack {
+                    Label("Developer options", systemImage: "hammer")
+                    Spacer()
+                    // A test keeps running after leaving the screen: show which.
+                    if let fault = bridge.activeFault {
+                        Text(fault.rawValue)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+        } footer: {
+            Text("Debug builds only.")
+        }
+    }
+}
+
 // Fault tests: the bridge misbehaving on purpose for a set time (see
-// BridgeFault in GlucoseBridgeManager.swift). Debug builds only, so none of this
-// reaches a release build.
+// BridgeFault in GlucoseBridgeManager.swift).
 struct FaultTestsSection: View {
     @EnvironmentObject var bridge: GlucoseBridgeManager
     @State private var seconds = 180
 
     var body: some View {
-        Section("Fault tests (debug builds)") {
+        Section("Fault tests") {
             Picker("Duration", selection: $seconds) {
                 Text("15 s").tag(15)
                 Text("1 min").tag(60)

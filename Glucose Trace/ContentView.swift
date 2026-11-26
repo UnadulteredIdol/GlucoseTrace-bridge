@@ -178,10 +178,6 @@ struct ContentView: View {
 
                 }
 
-                #if DEBUG
-                FaultTestsSection()
-                #endif
-
                 // --- Instructions ---
                 Section("Setup instructions") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -196,6 +192,10 @@ struct ContentView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
+
+                #if DEBUG
+                DeveloperOptionsLink()
+                #endif
             }
             .navigationTitle("Glucose Trace")
         }
