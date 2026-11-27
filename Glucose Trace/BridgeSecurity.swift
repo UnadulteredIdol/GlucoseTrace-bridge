@@ -1,64 +1,70 @@
 import Foundation
 import Security
+import CommonCrypto
 
 // ---------------------------------------------------------------------------
-// Sealed BLE packet, protocol v5 (16 bytes) -- must match ext4.js on the
-// watch and PROTOCOL.md.
+// Sealed BLE packet, protocol v6 (16 bytes) -- must match ext4.js on the
+// watch (Day Glucose AES for now; prototype in Suunto/prototypes/aes-ccm).
 //
 //   Byte 0-3   : nonce uint32 LE = unix seconds, strictly increasing
-//   Byte 4-11  : 8-byte message (BridgeMessage), XOR-encrypted with E(nonce, 0)
-//   Byte 12-15 : tag = first word of E(E(nonce, 0xFFFFFFFF) ^ message)
+//   Byte 4-11  : 8-byte message (BridgeMessage), AES-CCM ciphertext
+//   Byte 12-15 : AES-CCM tag, 4 bytes
 //
-// The reading is exactly one XTEA block, so both the keystream and the MAC
-// take a single block.
-//
-// E is XTEA (128-bit key, 64-bit block, 32 cycles), chosen because the
-// watch's ES5 JavaScript has no crypto library and XTEA fits in a few lines.
-// This is a CTR + CBC-MAC construction in the style of CCM: the keystream
-// and MAC blocks use different second words, so they never collide. The
-// nonce doubles as a timestamp; the watch rejects packets more than 10 min
-// from its own clock or not newer than the last one it accepted (replay).
+// AES-CCM as in RFC 3610 / NIST SP 800-38C: AES-128, tag length M = 4,
+// length field L = 2, no associated data, 13-byte CCM nonce = the 4 nonce
+// bytes followed by 9 zero bytes (not sent). The AES block cipher is Apple's
+// (CommonCrypto, one ECB block per call); iOS has no public CCM API, so the
+// CCM steps below are this file's own code. The nonce doubles as a timestamp;
+// the watch rejects packets more than 10 min from its own clock or not newer
+// than the last one it accepted (replay).
 // ---------------------------------------------------------------------------
 enum PacketSealer {
-    static func xtea(_ block: (UInt32, UInt32), key k: [UInt32]) -> (UInt32, UInt32) {
-        var (v0, v1) = block
-        var sum: UInt32 = 0
-        let delta: UInt32 = 0x9E3779B9
-        for _ in 0..<32 {
-            v0 &+= (((v1 << 4) ^ (v1 >> 5)) &+ v1) ^ (sum &+ k[Int(sum & 3)])
-            sum &+= delta
-            v1 &+= (((v0 << 4) ^ (v0 >> 5)) &+ v0) ^ (sum &+ k[Int((sum >> 11) & 3)])
+    /// One AES-128 block encryption (FIPS-197) through CommonCrypto.
+    static func aes(_ block: [UInt8], key: Data) -> [UInt8] {
+        precondition(block.count == 16 && key.count == 16)
+        var out = [UInt8](repeating: 0, count: 16 + kCCBlockSizeAES128)
+        let outCount = out.count
+        var moved = 0
+        let status = key.withUnsafeBytes { k in
+            CCCrypt(CCOperation(kCCEncrypt), CCAlgorithm(kCCAlgorithmAES), CCOptions(kCCOptionECBMode),
+                    k.baseAddress, 16, nil, block, 16, &out, outCount, &moved)
         }
-        return (v0, v1)
+        precondition(status == CCCryptorStatus(kCCSuccess) && moved == 16, "AES failed")
+        return Array(out[0..<16])
     }
 
+    /// The key as 4 little-endian words, as the watch's ext5.js reads it from
+    /// the "Bridge key" setting (unchanged from v5; used by the test harness).
     static func keyWords(_ key: Data) -> [UInt32] {
         let b = [UInt8](key)
-        return (0..<4).map { i in le32(b, i * 4) }
+        return (0..<4).map { (i: Int) -> UInt32 in
+            var w: UInt32 = 0
+            for j in 0..<4 { w |= UInt32(b[4 * i + j]) << UInt32(8 * j) }
+            return w
+        }
     }
 
     static func seal(_ reading: [UInt8], nonce: UInt32, key: Data) -> Data {
         precondition(reading.count == 8 && key.count == 16)
-        let k = keyWords(key)
-        let ks = xtea((nonce, 0), key: k)
-        let stream = bytes(ks.0) + bytes(ks.1)
-        let cipher = (0..<8).map { reading[$0] ^ stream[$0] }
-
-        let x = xtea((nonce, 0xFFFFFFFF), key: k)
-        let tag = xtea((x.0 ^ le32(reading, 0), x.1 ^ le32(reading, 4)), key: k).0
-        return Data(bytes(nonce) + cipher + bytes(tag))
+        let n = bytes(nonce) + [UInt8](repeating: 0, count: 9)      // 13-byte CCM nonce
+        // CBC-MAC: B0 = flags (M = 4, L = 2, no AAD) | nonce | length 8.
+        let x1 = aes([0x09] + n + [0x00, 0x08], key: key)
+        let t = aes((0..<16).map { x1[$0] ^ ($0 < 8 ? reading[$0] : 0) }, key: key)
+        // CTR: A0 masks the tag, A1 encrypts the message.
+        let s0 = aes([0x01] + n + [0x00, 0x00], key: key)
+        let s1 = aes([0x01] + n + [0x00, 0x01], key: key)
+        let cipher = (0..<8).map { reading[$0] ^ s1[$0] }
+        let tag = (0..<4).map { t[$0] ^ s0[$0] }
+        return Data(bytes(nonce) + cipher + tag)
     }
 
-    private static func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-        UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-    }
     private static func bytes(_ w: UInt32) -> [UInt8] {
         [UInt8(w & 0xFF), UInt8(w >> 8 & 0xFF), UInt8(w >> 16 & 0xFF), UInt8(w >> 24)]
     }
 }
 
 // ---------------------------------------------------------------------------
-// The 8-byte messages of protocol v5 (PROTOCOL.md section 4.1): two
+// The 8-byte messages of protocol v5 and v6 (PROTOCOL.md section 4.1): two
 // little-endian words, p0 = bytes 0-3 and p1 = bytes 4-7, with the message
 // type in p0 bits 0-2. No field crosses from p0 into p1, and reserved bits
 // are sent as 0. The watch ignores types it doesn't know.

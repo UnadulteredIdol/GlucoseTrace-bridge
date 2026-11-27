@@ -5,9 +5,9 @@ import UIKit
 import UserNotifications
 
 // Random UUIDs, unique to this project -- must match the watch's ext1.js.
-// The characteristic UUID changes with the protocol version (now v5), see PROTOCOL.md.
+// The characteristic UUID changes with the protocol version (now v6, AES-CCM), see PROTOCOL.md.
 let kGlucoseServiceUUID = CBUUID(string: "F17F3300-386E-46B5-A72A-C2FC31F7A639")
-let kGlucoseCharUUID    = CBUUID(string: "9EF12279-A492-49BF-B7F2-5371E9EAF2CB") // protocol v5
+let kGlucoseCharUUID    = CBUUID(string: "7FF01101-9D5B-4569-950A-63A16B8B6B56") // protocol v6 (AES-CCM)
 
 let mgdlPerMmol = 18.01559 // Nightscout's own factor, so values match its display
 
@@ -27,7 +27,7 @@ private let trendMap: [String: UInt8] = [
 ]
 
 // ---------------------------------------------------------------------------
-// BLE messages (protocol v5): the live reading, the history readings for the
+// BLE messages (protocol v6; same messages as v5): the live reading, the history readings for the
 // watch's graph and the status line. Each is 8 bytes; the layout is in
 // BridgeMessage (BridgeSecurity.swift) and PROTOCOL.md. PacketSealer seals it
 // with the bridge key into the 16-byte packet the watch gets.

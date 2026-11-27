@@ -52,7 +52,7 @@ Only one bridge can run at a time (they share the Bluetooth service): don't run 
 
 ## For developers
 
-- [`Glucose Trace/BridgeSecurity.swift`](Glucose%20Trace/BridgeSecurity.swift): packet sealing (XTEA, counter mode and CBC-MAC) and the v5 messages (`BridgeMessage`). The reference implementation of [PROTOCOL.md](https://github.com/UnadulteredIdol/GlucoseTrace/blob/main/PROTOCOL.md); the watch repo's test harness compiles against this file.
+- [`Glucose Trace/BridgeSecurity.swift`](Glucose%20Trace/BridgeSecurity.swift): packet sealing (AES-128-CCM, using Apple's AES from CommonCrypto) and the protocol messages (`BridgeMessage`). The reference implementation of [PROTOCOL.md](https://github.com/UnadulteredIdol/GlucoseTrace/blob/main/PROTOCOL.md); the watch repo's test harness compiles against this file.
 - [`Glucose Trace/CloudSources.swift`](Glucose%20Trace/CloudSources.swift): the LibreLinkUp and Dexcom Share clients (`DataSource.offered` decides which sources the app shows).
 - [`Manager/GlucoseBridgeManager.swift`](Manager/GlucoseBridgeManager.swift): polling, Nightscout, the BLE peripheral, state restoration and the watch status.
 - Debug builds have a **Fault tests** section that makes the bridge misbehave on purpose for a set time (hang while connected, lose its Bluetooth service, hide from the watch, answer slowly) to check how the watch reacts. Release builds leave it out.

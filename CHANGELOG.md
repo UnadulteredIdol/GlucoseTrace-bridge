@@ -2,8 +2,9 @@
 
 iPhone bridge for [Glucose Trace](https://github.com/UnadulteredIdol/GlucoseTrace). Version numbers match the watch app they go with.
 
-## Unreleased
+## 2.0 (2026-11-27)
 
+- **Protocol v6: packets are sealed with AES-CCM instead of XTEA** (AES-128 from Apple's CommonCrypto, CCM as in RFC 3610, 4-byte tag). Same packet size, messages and key. Needs Glucose Trace 2.0 on the watch; a 2.0 bridge and a 1.0 watch app do not connect (new characteristic UUID). Your key stays the same.
 - Loop age: when the pump refused the last three loop changes (out of reach for about 15 minutes), the loop age now keeps growing to red instead of disappearing.
 - A failed Nightscout status request no longer blanks IOB, COB and the loop age: IOB and COB stay for up to 30 minutes, the loop age keeps ageing.
 - A rejected Nightscout token now gets its own notification instead of "Can't reach Nightscout". The bridge keeps asking, so fixing the token's role on the site is enough.
